@@ -5,6 +5,13 @@ local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
 
+local FirstDisclaimer = game.Players.LocalPlayer.PlayerGui:FindFirstChild("DisclaimerGui")
+local SecondDisclaimer = game.Players.LocalPlayer.PlayerGui:FindFirstChild("Disclaimer2Gui")
+if FirstDisclaimer and SecondDisclaimer then
+	FirstDisclaimer:Destroy()
+	SecondDisclaimer:Destroy()
+end
+
 local Settings = {
 	['WhitelistedPlayers'] = {},
 	['FastReload'] = false,
@@ -165,6 +172,12 @@ local Window = Library.CreateLib("Waterloo at home - Head of the Muthafuckin Sta
 
 local PlayersTab = Window:NewTab("Players")
 local PlayersSection = PlayersTab:NewSection("Players")
+local AllPlayersSection = PlayersTab:NewSection("All Players")
+local InvisibleSection = PlayersTab:NewSection("Invisibility")
+
+local ClassTab = Window:NewTab("Class")
+local ClassSection = ClassTab:NewSection("Class")
+
 local dropdown = PlayersSection:NewDropdown("Selected player", "Selected player", Settings.AllPlayers,
 	function(player)
 		Settings.SelectedPlayer = player
@@ -218,8 +231,16 @@ PlayersSection:NewButton("God Selected Player", "WARNING: You cannot ungod them 
 	notify("SUCCESS!", "God player attempted.", "rbxassetid://15071996156", 2)
 end)
 
+ClassSection:NewDropdown("Force Class Change", "Bypasses class cooldown.", {"Artillery", "Ranker", "Sharpshooter", "Flag Bearer", "Sapper", "Grenadier", "Captain", "Cavalry", "Medic", "Musician"}, function(currentOption)
+	local args = {
+		[1] = currentOption
+	}
 
-PlayersSection:NewButton("Make selected player invisible", "You must have any melee or gun equipped to use this.", function()
+	game:GetService("ReplicatedStorage").RemoteFunctions.ChangeClass:InvokeServer(unpack(args))
+end)
+
+
+InvisibleSection:NewButton("Make selected player invisible", "You must have any melee or gun equipped to use this.", function()
 	local anything = getAnyGunOrMelee()
 	if not anything then
 		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
@@ -232,7 +253,7 @@ PlayersSection:NewButton("Make selected player invisible", "You must have any me
 		end
 	end
 end)
-PlayersSection:NewButton("Make yourself invisible", "You must have any melee or gun equipped to use this.", function()
+InvisibleSection:NewButton("Make yourself invisible", "You must have any melee or gun equipped to use this.", function()
 	local anything = getAnyGunOrMelee()
 	if not anything then
 		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
@@ -245,7 +266,7 @@ PlayersSection:NewButton("Make yourself invisible", "You must have any melee or 
 		end
 	end
 end)
-PlayersSection:NewButton("Make every structure invisible", "You must have any melee or gun equipped to use this.", function()
+InvisibleSection:NewButton("Make every structure invisible", "You must have any melee or gun equipped to use this.", function()
 	local anything = getAnyGunOrMelee()
 	if not anything then
 		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
@@ -274,6 +295,7 @@ end)
 
 local BuildingTab = Window:NewTab("Building")
 local BuildingSection = BuildingTab:NewSection("Building")
+local AngleBuilding = BuildingTab:NewSection("Z-Angle Building")
 local SelectedObjectLabel = BuildingSection:NewLabel("Selected name will be here")
 BuildingSection:NewKeybind("Select structure, ship, player", "Press V to select structure", Enum.KeyCode.V, function()
 	local structure = Mouse.Target
@@ -339,10 +361,10 @@ BuildingSection:NewButton("Kill selected object with artillery.", "Don't spam it
 		ReplicatedStorage.ReplicatedEvents.ProjectileHit:FireServer(unpack(args))
 	end
 end)
-BuildingSection:NewSlider("Z Angle", "Z Angle", 360, -360, function(s)
+AngleBuilding:NewSlider("Z Angle", "Z Angle", 360, -360, function(s)
 	Settings.ZAngle = s
 end)
-BuildingSection:NewToggle("Set Z Angle while building", "Set Z Angle????", function(state)
+AngleBuilding:NewToggle("Set Z Angle while building", "Set Z Angle????", function(state)
 	Settings.SetZAngle = state
 end)
 
@@ -457,8 +479,10 @@ end)
 
 local IsFiringArtillery = false
 
-PlayersSection:NewButton("Fire Artillery at Enemy Players", "Fire artillery at enemy players in the server", function()
+AllPlayersSection:NewButton("Fire Artillery at Enemy Players", "Fire artillery at enemy players in the server", function()
 	if IsFiringArtillery then
+		-- this is for your own safety, don't remove this
+		-- if you fire too many cannons in a short period of time then the game kicks you for "Supicous Client Behaviour"
 		notify("Loop Attempt Rejected", "There's already a loop happening, wait for it to end.", "rbxassetid://15071996156", 2)
 		return
 	end
@@ -519,8 +543,8 @@ end)
 local Wanwood = Window:NewTab("Anti-Wanwood")
 
 local WanwoodSection = Wanwood:NewSection("I AM NOT WANWOOD")
-WanwoodSection:NewLabel("Wanwood is a random guy")
-WanwoodSection:NewLabel("He doesn't really run shit")
+WanwoodSection:NewLabel("Just had to make this clear;")
+WanwoodSection:NewLabel("I have nothing to do with him, he's cringe.")
 WanwoodSection:NewLabel("-arbeiterklasse")
 
 
