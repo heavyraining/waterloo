@@ -1,0 +1,556 @@
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+
+local Settings = {
+	['WhitelistedPlayers'] = {},
+	['FastReload'] = false,
+	['NoSlowdown'] = false,
+	['InstaKill'] = false,
+	['GodMelee'] = false,
+	['InfiniteMorale'] = false,
+
+	['SilentAimbot'] = false,
+	['FovRadius'] = 180,
+
+	['AllPlayers'] = {},
+	['SelectedPlayer'] = Players.LocalPlayer.Name,
+
+	['SelectedObject'] = nil,
+
+	['SetZAngle'] = false,
+	['ZAngle'] = 0
+}
+for i, v in ipairs(Players:GetPlayers()) do Settings.AllPlayers[i] = v.Name end
+
+--Silent Aimbot Logic
+local GetPlayers = Players.GetPlayers
+local ValidTargetParts = { "Head", "HumanoidRootPart" }
+local fov_circle = Drawing.new("Circle")
+fov_circle.Thickness = 1
+fov_circle.NumSides = 100
+fov_circle.Radius = 180
+fov_circle.Filled = false
+fov_circle.Visible = false
+fov_circle.ZIndex = 999
+fov_circle.Transparency = 1
+fov_circle.Color = Color3.fromRGB(54, 57, 241)
+
+local Camera = workspace.CurrentCamera
+local WorldToScreen = Camera.WorldToScreenPoint
+local function getPositionOnScreen(Vector)
+	local Vec3, OnScreen = WorldToScreen(Camera, Vector)
+	return Vector2.new(Vec3.X, Vec3.Y), OnScreen
+end
+
+local function notify(Title:string, Text:string, Icon, Duration:number)
+	game.StarterGui:SetCore("SendNotification", {
+		Title = Title;
+		Text = Text;
+		Icon = Icon;
+		Duration = Duration;
+	})
+end
+
+local function getDirection(Origin, Position)
+	return (Position - Origin).Unit * 1000
+end
+
+local GetMouseLocation = UserInputService.GetMouseLocation
+local function getMousePosition()
+	return GetMouseLocation(UserInputService)
+end
+
+local GetPartsObscuringTarget = Camera.GetPartsObscuringTarget
+local FindFirstChild = game.FindFirstChild
+local function IsPlayerVisible(Player)
+	local PlayerCharacter = Player.Character
+	local LocalPlayerCharacter = LocalPlayer.Character
+
+	if not (PlayerCharacter or LocalPlayerCharacter) then return end
+
+	local PlayerRoot = FindFirstChild(PlayerCharacter, "HumanoidRootPart")
+
+	if not PlayerRoot then return end
+
+	local CastPoints, IgnoreList = { PlayerRoot.Position, LocalPlayerCharacter, PlayerCharacter },
+	{ LocalPlayerCharacter, PlayerCharacter }
+	local ObscuringObjects = #GetPartsObscuringTarget(Camera, CastPoints, IgnoreList)
+
+	return ((ObscuringObjects == 0 and true) or (ObscuringObjects > 0 and false))
+end
+
+local function getClosestPlayer()
+	local Closest
+	local DistanceToMouse
+	for _, Player in next, GetPlayers(Players) do
+		if Player == LocalPlayer then continue end
+		if Player.Team == LocalPlayer.Team then continue end
+
+		local Character = Player.Character
+		if not Character then continue end
+
+		if not IsPlayerVisible(Player) then continue end
+
+		local HumanoidRootPart = FindFirstChild(Character, "HumanoidRootPart")
+		local Humanoid = FindFirstChild(Character, "Humanoid")
+		if not HumanoidRootPart or not Humanoid or Humanoid and Humanoid.Health <= 0 then continue end
+
+		local ScreenPosition, OnScreen = getPositionOnScreen(HumanoidRootPart.Position)
+		if not OnScreen then continue end
+
+		local Distance = (getMousePosition() - ScreenPosition).Magnitude
+		if Distance <= (DistanceToMouse or Settings.FovRadius or 2000) then
+			Closest = Character[ValidTargetParts[math.random(1, #ValidTargetParts)]]
+			DistanceToMouse = Distance
+		end
+	end
+	return Closest
+end
+
+local function ValidateArguments(Args)
+	local RayMethod = {
+		ArgCountRequired = 3,
+		Args = {
+			"Instance", "Ray", "table", "boolean", "boolean"
+		}
+	}
+	local Matches = 0
+	if #Args < RayMethod.ArgCountRequired then
+		return false
+	end
+	for Pos, Argument in next, Args do
+		if typeof(Argument) == RayMethod.Args[Pos] then
+			Matches = Matches + 1
+		end
+	end
+	return Matches >= RayMethod.ArgCountRequired
+end
+
+local resume = coroutine.resume
+local create = coroutine.create
+local RunService = game:GetService("RunService")
+local RenderStepped = RunService.RenderStepped
+resume(create(function()
+	RenderStepped:Connect(function()
+		fov_circle.Position = getMousePosition()
+	end)
+end))
+
+local function getAnyGunOrMelee()
+	local Character = LocalPlayer.Character
+	local anyGun = Character:FindFirstChild("Musket")
+		or Character:FindFirstChild("Pistol")
+		or Character:FindFirstChild("Rifle")
+		or Character:FindFirstChild("Carbine")
+	local anyMelee = Character:FindFirstChild("Sword")
+		or Character:FindFirstChild("CavSword")
+		or Character:FindFirstChild("Briquet")
+	return anyGun or anyMelee
+end
+
+local function getAnyMelee()
+	local Character = LocalPlayer.Character
+	local anyMelee = Character:FindFirstChild("Sword")
+		or Character:FindFirstChild("CavSword")
+		or Character:FindFirstChild("Briquet")
+	return anyMelee
+end
+--
+
+local Window = Library.CreateLib("Waterloo at home - Head of the Muthafuckin State Edition", "Synapse")
+
+local PlayersTab = Window:NewTab("Players")
+local PlayersSection = PlayersTab:NewSection("Players")
+local dropdown = PlayersSection:NewDropdown("Selected player", "Selected player", Settings.AllPlayers,
+	function(player)
+		Settings.SelectedPlayer = player
+	end)
+Players.PlayerAdded:Connect(function(player)
+	table.insert(Settings.AllPlayers, player.Name)
+	dropdown:Refresh(Settings.AllPlayers)
+end)
+Players.PlayerRemoving:Connect(function(player)
+	table.remove(Settings.AllPlayers, table.find(Settings.AllPlayers, player.Name))
+	dropdown:Refresh(Settings.AllPlayers)
+end)
+PlayersSection:NewButton("Kill selected player", "Kill selected player", function()
+	local Character = Players[Settings.SelectedPlayer].Character
+	ReplicatedStorage.ReplicatedEvents.ProjectileDamage:FireServer("fffffffff",
+		"\18\139\6D\18q\20B\248\157\249D\184\30\205@q=J?H\225\158A2\244\150B\220k/C\0\0\0\0",
+		Character.Humanoid, 0)
+end)
+PlayersSection:NewButton("God Selected Player", "WARNING: You cannot ungod them or kill them even with exploits!", function()
+	local playerToTeleportTo = game.Players[Settings.SelectedPlayer]
+	local anymelee = getAnyMelee()
+	if not playerToTeleportTo then
+		notify("FAILED!", "No selected player?", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	if not anymelee then
+		notify("FAILED!", "Equip any melee weapon.", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	local originalPosition = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
+
+	game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = playerToTeleportTo.Character.HumanoidRootPart.CFrame
+
+	wait(0.2)
+
+	local args = {
+		[1] = "ffffff",
+		[2] = "\164D\154D\210.\162\195\25\197\8E\0\0\0\0\0\0\0@\0\0\0\0",
+		[3] = playerToTeleportTo.Character.Humanoid,
+		[4] = "-inf"
+	}
+
+	game:GetService("Players").LocalPlayer.Character[anymelee].Events.BlockInvoke:InvokeServer(unpack(args))
+
+	wait(0.2)
+
+	game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = originalPosition
+
+	notify("SUCCESS!", "God player attempted.", "rbxassetid://15071996156", 2)
+end)
+
+
+PlayersSection:NewButton("Make selected player invisible", "You must have any melee or gun equipped to use this.", function()
+	local anything = getAnyGunOrMelee()
+	if not anything then
+		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	for i, v in pairs(Players[Settings.SelectedPlayer].Character:GetDescendants()) do
+		if v:IsA("BasePart") or v:IsA("Decal") then
+			anything.Events.ChangeTransparency:FireServer(v, 1)
+		end
+	end
+end)
+PlayersSection:NewButton("Make yourself invisible", "You must have any melee or gun equipped to use this.", function()
+	local anything = getAnyGunOrMelee()
+	if not anything then
+		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	for i, v in pairs(LocalPlayer.Character:GetDescendants()) do
+		if v:IsA("BasePart") or v:IsA("Decal") then
+			anything.Events.ChangeTransparency:FireServer(v, 1)
+		end
+	end
+end)
+PlayersSection:NewButton("Make every structure invisible", "You must have any melee or gun equipped to use this.", function()
+	local anything = getAnyGunOrMelee()
+	if not anything then
+		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	for i, v in pairs(workspace.Structures:GetDescendants()) do
+		if v:IsA("BasePart") then
+			anything.Events.ChangeTransparency:FireServer(v, 1)
+		end
+	end
+end)
+PlayersSection:NewButton("Make every ship invisible", "You must have any melee or gun equipped to use this.", function()
+	local anything = getAnyGunOrMelee()
+	if not anything then
+		notify("FAILED!", "You don't have a gun or melee equipped.", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	for i, v in pairs(workspace.Ships:GetDescendants()) do
+		if v:IsA("BasePart") or v:IsA("MeshPart") or v:IsA("VehicleSeat") then
+			anything.Events.ChangeTransparency:FireServer(v, 1)
+		end
+	end
+end)
+
+local BuildingTab = Window:NewTab("Building")
+local BuildingSection = BuildingTab:NewSection("Building")
+local SelectedObjectLabel = BuildingSection:NewLabel("Selected name will be here")
+BuildingSection:NewKeybind("Select structure, ship, player", "Press V to select structure", Enum.KeyCode.V, function()
+	local structure = Mouse.Target
+	if structure ~= nil then
+		--structure check
+		if structure:IsA("Part") and structure.Parent.Parent.Name == "Structures" then
+			Settings.SelectedObject = structure.Parent
+			SelectedObjectLabel:UpdateLabel(Settings.SelectedObject.Name)
+			--ship check
+		elseif (structure:IsA("Part") or structure:IsA("MeshPart")) and structure.Parent.Name == "SmallShip" then
+			Settings.SelectedObject = structure.Parent
+			SelectedObjectLabel:UpdateLabel(Settings.SelectedObject.Name)
+		elseif (structure:IsA("Part") or structure:IsA("MeshPart")) and structure.Parent.Parent.Name == "SmallShip" then
+			Settings.SelectedObject = structure.Parent.Parent
+			SelectedObjectLabel:UpdateLabel(Settings.SelectedObject.Name)
+			--player check
+		elseif structure:IsA("Part") and structure.Parent:FindFirstChild("Humanoid") then
+			Settings.SelectedObject = structure.Parent
+			SelectedObjectLabel:UpdateLabel(Settings.SelectedObject.Name)
+		end
+	end
+end)
+BuildingSection:NewButton("Kill selected object with artillery.", "Don't spam it.", function()
+	local requiredClass = game.Players.LocalPlayer.Character.Head.TeamGui:FindFirstChild("artillery")
+
+	if not requiredClass then
+		notify("Incorrect Class", "This does not work without being Artillery class, change to Artillery class!", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	if Settings.SelectedObject.Name and
+		(Settings.SelectedObject.Name == "SmallShip" or Settings.SelectedObject.Parent.Name == "Structures") then
+		local hit = Settings.SelectedObject:WaitForChild("Center")
+
+		local packedHitPosition = string.pack("ffffff", hit.Position.X, hit.Position.Y, hit.Position.Z, -1, 0, 0, 25)
+
+		local args = {
+			[1] = "ffffff",
+			[2] = packedHitPosition,
+			[3] = 1.5,
+			[4] = workspace.Artillery.Cannons:FindFirstChild("8 in. Mortar"),
+			[5] = hit,
+			[6] = hit.Position,
+			[7] = LocalPlayer.Team.Name
+		}
+
+		ReplicatedStorage.ReplicatedEvents.ProjectileHit:FireServer(unpack(args))
+	elseif Settings.SelectedObject.Name and Settings.SelectedObject:FindFirstChild("HumanoidRootPart") then
+		local hit = Settings.SelectedObject:FindFirstChild("HumanoidRootPart")
+
+		local packedHitPosition = string.pack("ffffff", hit.Position.X, hit.Position.Y, hit.Position.Z, -1, 0, 0, 25)
+
+		local args = {
+			[1] = "ffffff",
+			[2] = packedHitPosition,
+			[3] = 1.5,
+			[4] = workspace.Artillery.Cannons:FindFirstChild("8 in. Mortar"),
+			[5] = hit,
+			[6] = hit.Position,
+			[7] = LocalPlayer.Team.Name
+		}
+
+		ReplicatedStorage.ReplicatedEvents.ProjectileHit:FireServer(unpack(args))
+	end
+end)
+BuildingSection:NewSlider("Z Angle", "Z Angle", 360, -360, function(s)
+	Settings.ZAngle = s
+end)
+BuildingSection:NewToggle("Set Z Angle while building", "Set Z Angle????", function(state)
+	Settings.SetZAngle = state
+end)
+
+local MiscellaneousTab = Window:NewTab("Miscellaneous")
+local GunSettingsSection = MiscellaneousTab:NewSection("General")
+GunSettingsSection:NewKeybind("Toggle UI", "Toggle UI", Enum.KeyCode.U, function()
+	Library:ToggleUI()
+end)
+local GunSettingsSection = MiscellaneousTab:NewSection("Gun Settings")
+GunSettingsSection:NewToggle("Fast Reload", "Fast Reload", function(state)
+	Settings.FastReload = state
+end)
+GunSettingsSection:NewToggle("No slow down while aiming", "No slow down while aiming", function(state)
+	Settings.NoSlowdown = state
+end)
+local MeleeSettingsSection = MiscellaneousTab:NewSection("Melee Settings")
+MeleeSettingsSection:NewToggle("Insta melee kill", "Insta melee kill", function(state)
+	Settings.InstaKill = state
+end)
+local MoraleSettingsSection = MiscellaneousTab:NewSection("Morale Settings")
+MoraleSettingsSection:NewToggle("Infinite morale", "Infinite morale", function(state)
+	Settings.InfiniteMorale = state
+end)
+LocalPlayer.CharacterAdded:Connect(function()
+	--very detectable ik - 2nd edition note, what the fuck even is this lol??
+	if Settings.InfiniteMorale then
+		local MoraleHandler = LocalPlayer.Character:WaitForChild("LocalMoraleHandler")
+		MoraleHandler:Destroy()
+	end
+end)
+
+local SilentAimbotTab = Window:NewTab("Silent Aimbot")
+local SilentAimbotSection = SilentAimbotTab:NewSection("Silent Aimbot Settings")
+SilentAimbotSection:NewToggle("Silent Aimbot", "may cause lag", function(state)
+	Settings.SilentAimbot = state
+end)
+SilentAimbotSection:NewToggle("Show FOV", "Show FOV", function(state)
+	fov_circle.Visible = state
+end)
+SilentAimbotSection:NewSlider("FOV Radius", "FOV Radius", 500, 0, function(s)
+	fov_circle.Radius = s
+	Settings.FovRadius = s
+end)
+SilentAimbotSection:NewColorPicker("FOV Color", "FOV Color", Color3.fromRGB(54, 57, 241), function(color)
+	fov_circle.Color = color
+end)
+
+--hooks
+local OldIndex = nil
+
+OldIndex = hookmetamethod(game, "__index", function(Self, Key)
+	if not checkcaller() then
+		local Name = tostring(Self)
+		-- fast reload
+		if Name == "ReloadSpeed" and Key == "Value" and Settings.FastReload then
+			return 0.001
+		elseif Name == "ReloadSpeedWhileMoving" and Key == "Value" and Settings.FastReload then
+			return 0.0001
+			-- no slow down while aiming
+		elseif Name == "Aiming" and Key == "Value" and Settings.NoSlowdown then
+			return 16
+		elseif Name == "Reloading" and Key == "Value" and Settings.NoSlowdown then
+			return 16
+			--
+		elseif Name == "MeleeDamage" and Key == "Value" and Settings.InstaKill then
+			return 100
+		end
+	end
+
+	return OldIndex(Self, Key)
+end)
+
+local WhitelistTab = Window:NewTab("Whitelist")
+local WhitelistSection = WhitelistTab:NewSection("Whitelist Players")
+local whitelistSelectedPlayer = nil
+
+WhitelistSection:NewDropdown("Whitelist Player", "Choose a player to whitelist", Settings.AllPlayers, function(selectedPlayer)
+	if selectedPlayer then
+		whitelistSelectedPlayer = selectedPlayer
+	end
+end)
+
+WhitelistSection:NewButton("Whitelist Selected Player", "Whitelist the selected player", function()
+	local selectedPlayer = whitelistSelectedPlayer
+	if selectedPlayer then
+		table.insert(Settings.WhitelistedPlayers, selectedPlayer)
+		notify("Whitelisted Player", selectedPlayer .. " has been whitelisted.", "rbxassetid://15071996156", 2)
+	end
+end)
+
+WhitelistSection:NewButton("Unwhitelist Player", "Unwhitelist a player", function()
+	local selectedPlayer = whitelistSelectedPlayer
+	if selectedPlayer then
+		local index = table.find(Settings.WhitelistedPlayers, selectedPlayer)
+		if index then
+			table.remove(Settings.WhitelistedPlayers, index)
+			notify("Unwhitelisted Player", selectedPlayer .. " has been unwhitelisted.", "rbxassetid://15071996156", 2)
+		end
+	end
+end)
+
+WhitelistSection:NewButton("Show Whitelisted Players", "Show all whitelisted players", function()
+	if #Settings.WhitelistedPlayers == 0 then
+		notify("No Whitelisted Players", "There are no whitelisted players.", "rbxassetid://15071996156", 2)
+	else
+		for _, player in ipairs(Settings.WhitelistedPlayers) do
+			notify(player, "is a whitelisted player.", "rbxassetid://15071996156", 0.5)
+			wait(0.5)
+		end
+	end
+end)
+
+local IsFiringArtillery = false
+
+PlayersSection:NewButton("Fire Artillery at Enemy Players", "Fire artillery at enemy players in the server", function()
+	if IsFiringArtillery then
+		notify("Loop Attempt Rejected", "There's already a loop happening, wait for it to end.", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	local requiredClass = game.Players.LocalPlayer.Character.Head.TeamGui:FindFirstChild("artillery")
+
+	if not requiredClass then
+		notify("Incorrect Class", "This does not work without being Artillery class, change to Artillery class!", "rbxassetid://15071996156", 2)
+		return
+	end
+
+	notify("Loop Started", "An artillery loop is now in effect, you'll be notified when it's over.", "rbxassetid://15071996156", 2)
+	IsFiringArtillery = true
+
+	local delayBetweenShots = 1
+
+	local function fireArtilleryAtPlayer(player)
+		if not table.find(Settings.WhitelistedPlayers, player.Name) and player.Team ~= LocalPlayer.Team then
+			local Character = player.Character
+			if Character then
+				local hit
+				if Character:FindFirstChild("HumanoidRootPart") then
+					hit = Character:FindFirstChild("HumanoidRootPart")
+				elseif Character:FindFirstChild("Head") then
+					hit = Character:FindFirstChild("Head")
+				end
+
+				if hit then
+					local packedHitPosition = string.pack("ffffff", hit.Position.X, hit.Position.Y, hit.Position.Z, -1, 0, 0, 25)
+
+					local args = {
+						[1] = "ffffff",
+						[2] = packedHitPosition,
+						[3] = 1.5,
+						[4] = workspace.Artillery.Cannons:FindFirstChild("8 in. Mortar"),
+						[5] = hit,
+						[6] = hit.Position,
+						[7] = LocalPlayer.Team.Name
+					}
+
+					ReplicatedStorage.ReplicatedEvents.ProjectileHit:FireServer(unpack(args))
+				end
+			end
+		end
+	end
+
+	for _, player in pairs(Players:GetPlayers()) do
+		if player.Team ~= LocalPlayer.Team then
+			wait(delayBetweenShots)
+			fireArtilleryAtPlayer(player)
+		end
+	end
+
+	notify("Loop Finished", "The artillery loop is now finished, you may start another one.", "rbxassetid://15071996156", 2)
+	IsFiringArtillery = false
+end)
+
+local Wanwood = Window:NewTab("Anti-Wanwood")
+
+local WanwoodSection = Wanwood:NewSection("I AM NOT WANWOOD")
+WanwoodSection:NewLabel("Wanwood is a random guy")
+WanwoodSection:NewLabel("He doesn't really run shit")
+WanwoodSection:NewLabel("-arbeiterklasse")
+
+
+local PlaceStructure = ReplicatedStorage.RemoteFunctions.PlaceStructure
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
+	local Method = getnamecallmethod()
+	local Arguments = { ... }
+	local self = Arguments[1]
+	if self == workspace and not checkcaller() and Method == "FindPartOnRayWithIgnoreList" and
+		ValidateArguments(Arguments) and Settings.SilentAimbot then
+		local A_Ray = Arguments[2]
+
+		local HitPart = getClosestPlayer()
+		if HitPart then
+			local Origin = A_Ray.Origin
+			local Direction = getDirection(Origin, HitPart.Position)
+			Arguments[2] = Ray.new(Origin, Direction)
+
+			return oldNamecall(unpack(Arguments))
+		end
+	elseif self == PlaceStructure and not checkcaller() and Method == "InvokeServer" and Settings.SetZAngle then
+		local hologram = game.workspace[Arguments[4]].Center
+		local rx = hologram.Orientation.X
+		local ry = hologram.Orientation.Y
+		local cframe = CFrame.new(hologram.Position) *
+			CFrame.Angles(math.rad(rx), math.rad(ry), math.rad(Settings.ZAngle))
+		Arguments[5] = cframe
+		return oldNamecall(unpack(Arguments))
+	end
+	return oldNamecall(...)
+end))
+--
